@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMPL–16</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080a08;
+    --surface: #111411;
+    --surface2: #181c18;
+    --border: #2a2f2a;
+    --accent: #c8f000;
+    --accent2: #ff6b00;
+    --red: #ff2a2a;
+    --text: #d4e0c8;
+    --text-dim: #5a6a54;
+    --pad-empty: #131613;
+    --pad-loaded: #1a2018;
+    --pad-playing: #1f2a10;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Barlow Condensed', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* noise texture */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 99;
+    opacity: 0.5;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* HEADER */
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0 2px;
+  }
+
+  .logo {
+    font-family: var(--sans);
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(200,240,0,0.4);
+  }
+
+  .logo span {
+    color: var(--text-dim);
+    font-weight: 300;
+  }
+
+  .header-meta {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* STATUS BAR */
+  .status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+  }
+
+  .status-bar .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+
+  .status-bar.recording { border-color: var(--red); color: var(--red); }
+  .status-bar.recording .dot { background: var(--red); animation: blink 0.5s step-end infinite; }
+  .status-bar.playing { border-color: var(--accent); color: var(--accent); }
+  .status-bar.playing .dot { background: var(--accent); }
+  .status-bar.info { border-color: var(--accent2); color: var(--accent2); }
+  .status-bar.info .dot { background: var(--accent2); }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* PAD GRID */
+  .pad-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .pad {
+    aspect-ratio: 1;
+    background: var(--pad-empty);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+    transition: background 0.15s, border-color 0.15s, transform 0.08s;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .pad::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .pad:active { transform: scale(0.94); }
+
+  .pad.loaded {
+    background: var(--pad-loaded);
+    border-color: #2f3a2f;
+  }
+
+  .pad.playing {
+    background: var(--pad-playing);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(200,240,0,0.15), inset 0 0 20px rgba(200,240,0,0.05);
+    animation: pulse-pad 0.8s ease-in-out infinite alternate;
+  }
+
+  .pad.recording-target {
+    border-color: var(--red);
+    box-shadow: 0 0 12px rgba(255,42,42,0.3);
+    animation: pulse-red 0.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-pad {
+    from { box-shadow: 0 0 8px rgba(200,240,0,0.1), inset 0 0 15px rgba(200,240,0,0.03); }
+    to   { box-shadow: 0 0 20px rgba(200,240,0,0.25), inset 0 0 25px rgba(200,240,0,0.08); }
+  }
+
+  @keyframes pulse-red {
+    from { box-shadow: 0 0 8px rgba(255,42,42,0.2); }
+    to   { box-shadow: 0 0 20px rgba(255,42,42,0.5); }
+  }
+
+  .pad-number {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-family: var(--mono);
+  }
+
+  .pad.playing .pad-number { color: var(--accent); }
+
+  .pad-icon {
+    font-size: 18px;
+    line-height: 1;
+    opacity: 0.4;
+  }
+
+  .pad.loaded .pad-icon, .pad.playing .pad-icon { display: none; }
+
+  .pad-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    text-align: center;
+    padding: 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    display: none;
+  }
+
+  .pad.loaded .pad-label, .pad.playing .pad-label { display: block; }
+  .pad.playing .pad-label { color: var(--accent); }
+
+  /* mini waveform in pad */
+  .pad-waveform {
+    width: 70%;
+    height: 24px;
+    display: none;
+  }
+  .pad.loaded .pad-waveform, .pad.playing .pad-waveform { display: block; }
+
+  .pad-duration {
+    font-size: 8px;
+    color: var(--text-dim);
+    position: absolute;
+    bottom: 5px;
+    right: 7px;
+    display: none;
+  }
+  .pad.loaded .pad-duration, .pad.playing .pad-duration { display: block; }
+  .pad.playing .pad-duration { color: var(--accent); opacity: 0.7; }
+
+  /* CONTROLS PANEL */
+  .controls-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ctrl-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    width: 52px;
+    flex-shrink: 0;
+  }
+
+  .ctrl-value {
+    font-size: 11px;
+    color: var(--accent);
+    width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(200,240,0,0.5);
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+
+  input[type=range]::-webkit-slider-thumb:active { transform: scale(1.3); }
+
+  input[type=range].speed-range::-webkit-slider-thumb { background: var(--accent2); box-shadow: 0 0 8px rgba(255,107,0,0.5); }
+
+  /* divider */
+  .ctrl-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0 -14px;
+  }
+
+  /* TRANSPORT */
+  .transport {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+  }
+
+  .btn:hover { border-color: #444; color: var(--text); }
+  .btn:active { transform: scale(0.97); }
+
+  .btn.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(200,240,0,0.05);
+  }
+  .btn.primary:hover { background: rgba(200,240,0,0.1); }
+
+  .btn.danger {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255,42,42,0.05);
+  }
+
+  .btn.rec-btn {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255,42,42,0.05);
+    flex: 0 0 auto;
+    padding: 10px 20px;
+  }
+
+  .btn.rec-btn.active {
+    background: var(--red);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(255,42,42,0.4);
+    animation: pulse-btn 0.6s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-btn {
+    from { box-shadow: 0 0 8px rgba(255,42,42,0.3); }
+    to   { box-shadow: 0 0 24px rgba(255,42,42,0.7); }
+  }
+
+  /* SLOT EDITOR */
+  .slot-editor {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .slot-editor.visible { display: flex; }
+
+  .editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .editor-title {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+
+  .editor-title span { color: var(--accent); }
+
+  .btn-close {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 3px;
+    transition: all 0.15s;
+  }
+  .btn-close:hover { color: var(--text); border-color: #444; }
+
+  /* waveform canvas */
+  .waveform-canvas {
+    width: 100%;
+    height: 60px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+  }
+
+  .editor-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .editor-footer {
+    display: flex;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* FOOTER */
+  .app-footer {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1.5px;
+    text-align: center;
+    opacity: 0.5;
+    padding-top: 4px;
+  }
+
+  /* mic permission warning */
+  .permission-warning {
+    display: none;
+    background: rgba(255,42,42,0.08);
+    border: 1px solid rgba(255,42,42,0.3);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--red);
+    letter-spacing: 1px;
+  }
+
+  /* REC MODE — pad selection overlay */
+  .pad-grid.rec-select-mode .pad.loaded,
+  .pad-grid.rec-select-mode .pad:not(.playing) {
+    border-color: rgba(255,42,42,0.4);
+    animation: pulse-red-soft 1s ease-in-out infinite alternate;
+  }
+  .pad-grid.rec-select-mode .pad:hover {
+    border-color: var(--red) !important;
+    background: rgba(255,42,42,0.12) !important;
+    transform: scale(1.05);
+  }
+  @keyframes pulse-red-soft {
+    from { box-shadow: 0 0 4px rgba(255,42,42,0.1); }
+    to   { box-shadow: 0 0 10px rgba(255,42,42,0.25); }
+  }
+
+  /* rec hint banner */
+  .rec-hint {
+    display: none;
+    background: rgba(255,42,42,0.1);
+    border: 1px solid rgba(255,42,42,0.5);
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-size: 11px;
+    color: var(--red);
+    letter-spacing: 1.5px;
+    text-align: center;
+    animation: blink-border 1s step-end infinite;
+  }
+  .rec-hint.visible { display: block; }
+  @keyframes blink-border {
+    50% { border-color: rgba(255,42,42,0.15); }
+  }
+
+  /* global REC button state */
+  .btn.rec-global { flex: 0 0 auto; padding: 10px 18px; }
+  .btn.rec-global.active {
+    background: var(--red);
+    color: #fff;
+    border-color: var(--red);
+    box-shadow: 0 0 16px rgba(255,42,42,0.5);
+    animation: pulse-btn 0.6s ease-in-out infinite alternate;
+  }
+
+  /* recording live bar */
+  .rec-live-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,42,42,0.08);
+    border: 1px solid rgba(255,42,42,0.4);
+    border-radius: 4px;
+    padding: 8px 14px;
+  }
+  .rec-live-bar.visible { display: flex; }
+  .rec-live-timer {
+    font-size: 18px;
+    color: var(--red);
+    letter-spacing: 3px;
+    font-family: var(--mono);
+    flex: 1;
+  }
+  .rec-live-canvas {
+    flex: 2;
+    height: 32px;
+  }
+  .btn.stop-rec {
+    flex: 0 0 auto;
+    border-color: var(--red);
+    color: var(--red);
+    padding: 6px 14px;
+    font-size: 11px;
+  }
+  .btn.stop-rec:hover { background: var(--red); color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="header">
+    <div class="logo">SMPL<span>–</span>16</div>
+    <div class="header-meta">
+      PROTOTYPE v0.1<br>
+      WEB AUDIO API
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="dot"></div>
+    <span id="statusText">PŘIPRAVEN · TAP = PLAY · LONG PRESS = EDITOVAT</span>
+  </div>
+
+  <div class="permission-warning" id="permWarn">
+    ⚠ PŘÍSTUP K MIKROFONU ODEPŘEN — NAHRÁVÁNÍ NEBUDE FUNGOVAT
+  </div>
+
+  <div class="pad-grid" id="padGrid"></div>
+
+  <!-- SLOT EDITOR -->
+  <div class="slot-editor" id="slotEditor">
+    <div class="editor-header">
+      <div class="editor-title">SLOT <span id="editorSlotNum">—</span></div>
+      <button class="btn-close" id="closeEditor">✕ ZAVŘÍT</button>
+    </div>
+
+    <canvas class="waveform-canvas" id="waveformCanvas" width="440" height="120"></canvas>
+
+    <div class="editor-actions">
+      <button class="btn rec-btn" id="recBtn">● REC</button>
+      <button class="btn" id="previewBtn" disabled>▶ PREVIEW</button>
+      <button class="btn danger" id="clearBtn" disabled>✕ SMAZAT</button>
+    </div>
+
+    <div class="controls-panel" style="background: var(--bg); margin: 0; padding: 12px;">
+      <div class="controls-row">
+        <div class="ctrl-label">PITCH</div>
+        <input type="range" id="edPitch" min="-12" max="12" step="0.5" value="0">
+        <div class="ctrl-value" id="edPitchVal">0 st</div>
+      </div>
+      <div class="ctrl-divider"></div>
+      <div class="controls-row">
+        <div class="ctrl-label">SPEED</div>
+        <input type="range" id="edSpeed" min="0.25" max="2" step="0.05" value="1" class="speed-range">
+        <div class="ctrl-value" id="edSpeedVal">1.00×</div>
+      </div>
+    </div>
+
+    <div class="editor-footer">
+      <button class="btn primary" id="saveBtn" disabled>✓ ULOŽIT DO SLOTU</button>
+    </div>
+  </div>
+
+  <!-- REC LIVE BAR -->
+  <div class="rec-live-bar" id="recLiveBar">
+    <div class="rec-live-timer" id="recTimer">00:00</div>
+    <canvas class="rec-live-canvas" id="recLiveCanvas" width="200" height="32"></canvas>
+    <button class="btn stop-rec" id="stopRecBtn">■ STOP</button>
+  </div>
+
+  <!-- SELECT SLOT HINT -->
+  <div class="rec-hint" id="recHint">● NAHRÁVKA PŘIPRAVENA · KLIKNI NA PAD PRO PŘIŘAZENÍ</div>
+
+  <!-- GLOBAL CONTROLS -->
+  <div class="controls-panel">
+    <div class="controls-row">
+      <div class="ctrl-label">LOOP SPD</div>
+      <input type="range" id="globalSpeed" min="0.25" max="2" step="0.05" value="1" class="speed-range">
+      <div class="ctrl-value" id="globalSpeedVal">1.00×</div>
+    </div>
+    <div class="ctrl-divider"></div>
+    <div class="transport">
+      <button class="btn rec-global" id="globalRecBtn">● REC</button>
+      <button class="btn primary" id="playAllBtn">▶ PLAY ALL</button>
+      <button class="btn" id="stopAllBtn">■ STOP</button>
+    </div>
+  </div>
+
+  <div class="app-footer">SMPL–16 PROTOTYPE · WEB AUDIO API · NO PERSISTENCE</div>
+
+</div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────────
+const NUM_SLOTS = 16;
+const slots = Array.from({length: NUM_SLOTS}, (_, i) => ({
+  index: i, audioBuffer: null, label: null,
+  pitch: 0, speed: 1.0, duration: 0,
+  waveformData: null, sourceNode: null, isPlaying: false,
+}));
+
+let audioCtx = null;
+let globalSpeed = 1.0;
+let mediaRecorder = null;
+let recordingChunks = [];
+let editorSlotIndex = null;
+let longPressTimer = null;
+let previewSource = null;
+
+// rec flow state
+let isRecording = false;
+let pendingBuffer = null;   // recorded buffer waiting for slot assignment
+let pendingWaveform = null;
+let selectSlotMode = false; // after recording, waiting for pad tap
+let recTimerInterval = null;
+let recStartTime = 0;
+let liveAnalyser = null;
+let liveAnimFrame = null;
+
+// ─── AUDIO CONTEXT ────────────────────────────────────────────────────────────
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const padGrid       = document.getElementById('padGrid');
+const slotEditor    = document.getElementById('slotEditor');
+const statusBar     = document.getElementById('statusBar');
+const statusText    = document.getElementById('statusText');
+const recBtn        = document.getElementById('recBtn');
+const previewBtn    = document.getElementById('previewBtn');
+const clearBtn      = document.getElementById('clearBtn');
+const saveBtn       = document.getElementById('saveBtn');
+const closeEditor   = document.getElementById('closeEditor');
+const editorSlotNum = document.getElementById('editorSlotNum');
+const waveformCanvas= document.getElementById('waveformCanvas');
+const edPitch       = document.getElementById('edPitch');
+const edPitchVal    = document.getElementById('edPitchVal');
+const edSpeed       = document.getElementById('edSpeed');
+const edSpeedVal    = document.getElementById('edSpeedVal');
+const globalSpeedSlider = document.getElementById('globalSpeed');
+const globalSpeedVal    = document.getElementById('globalSpeedVal');
+const playAllBtn    = document.getElementById('playAllBtn');
+const stopAllBtn    = document.getElementById('stopAllBtn');
+const permWarn      = document.getElementById('permWarn');
+const globalRecBtn  = document.getElementById('globalRecBtn');
+const stopRecBtn    = document.getElementById('stopRecBtn');
+const recLiveBar    = document.getElementById('recLiveBar');
+const recLiveCanvas = document.getElementById('recLiveCanvas');
+const recTimerEl    = document.getElementById('recTimer');
+const recHint       = document.getElementById('recHint');
+
+// ─── BUILD PADS ───────────────────────────────────────────────────────────────
+const padEls = [];
+
+slots.forEach((slot, i) => {
+  const pad = document.createElement('div');
+  pad.className = 'pad';
+  pad.innerHTML = `
+    <div class="pad-number">${String(i+1).padStart(2,'0')}</div>
+    <div class="pad-icon">+</div>
+    <canvas class="pad-waveform" id="pw${i}" width="80" height="24"></canvas>
+    <div class="pad-label" id="pl${i}">—</div>
+    <div class="pad-duration" id="pd${i}"></div>
+  `;
+  padGrid.appendChild(pad);
+  padEls.push(pad);
+
+  pad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (selectSlotMode) return; // no long-press in select mode
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      openEditor(i);
+    }, 450);
+  });
+
+  pad.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    if (selectSlotMode) {
+      assignPendingToSlot(i);
+      return;
+    }
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+      tapPad(i);
+    }
+  });
+
+  pad.addEventListener('pointercancel', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+});
+
+// ─── PAD TAP ─────────────────────────────────────────────────────────────────
+function tapPad(i) {
+  const slot = slots[i];
+  if (!slot.audioBuffer) {
+    setStatus(`SLOT ${i+1} PRÁZDNÝ · NAHRAJ ZVUK TLAČÍTKEM ● REC`, 'info');
+    return;
+  }
+  slot.isPlaying ? stopSlot(i) : playSlot(i);
+}
+
+// ─── PLAY / STOP ──────────────────────────────────────────────────────────────
+function playSlot(i) {
+  const slot = slots[i];
+  if (!slot.audioBuffer) return;
+  stopSlot(i);
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = slot.audioBuffer;
+  source.loop = true;
+  const pitchFactor = Math.pow(2, slot.pitch / 12);
+  source.playbackRate.value = slot.speed * globalSpeed * pitchFactor;
+  source.connect(ctx.destination);
+  source.start();
+  slot.sourceNode = source;
+  slot.isPlaying = true;
+  updatePadUI(i);
+  setStatus(`SLOT ${i+1} LOOP ●  ${slot.label || ''}`, 'playing');
+}
+
+function stopSlot(i) {
+  const slot = slots[i];
+  if (slot.sourceNode) {
+    try { slot.sourceNode.stop(); } catch(e) {}
+    slot.sourceNode.disconnect();
+    slot.sourceNode = null;
+  }
+  slot.isPlaying = false;
+  updatePadUI(i);
+}
+
+function stopAll() {
+  slots.forEach((_, i) => stopSlot(i));
+  setStatus('STOP ■  VŠECHNY SLOTY ZASTAVENY');
+}
+
+function playAll() {
+  let count = 0;
+  slots.forEach((slot, i) => { if (slot.audioBuffer) { playSlot(i); count++; } });
+  if (count === 0) setStatus('ŽÁDNÉ SLOTY NEJSOU NAČTENY', 'info');
+  else setStatus(`PLAY ALL ▶  ${count} SLOTŮ SPUŠTĚNO`, 'playing');
+}
+
+function updateAllPlaybackRates() {
+  slots.forEach((slot) => {
+    if (slot.isPlaying && slot.sourceNode) {
+      const pf = Math.pow(2, slot.pitch / 12);
+      slot.sourceNode.playbackRate.value = slot.speed * globalSpeed * pf;
+    }
+  });
+}
+
+// ─── PAD UI ───────────────────────────────────────────────────────────────────
+function updatePadUI(i) {
+  const slot = slots[i];
+  const pad = padEls[i];
+  pad.className = 'pad';
+  if (slot.audioBuffer) {
+    pad.classList.add(slot.isPlaying ? 'playing' : 'loaded');
+    document.getElementById(`pl${i}`).textContent = slot.label || `SMP ${i+1}`;
+    document.getElementById(`pd${i}`).textContent = slot.duration.toFixed(1) + 's';
+    drawMiniWaveform(i);
+  }
+}
+
+// ─── WAVEFORM ────────────────────────────────────────────────────────────────
+function drawMiniWaveform(i) {
+  const slot = slots[i];
+  if (!slot.waveformData) return;
+  const canvas = document.getElementById(`pw${i}`);
+  const c = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  c.clearRect(0, 0, W, H);
+  const data = slot.waveformData;
+  const step = Math.ceil(data.length / W);
+  c.strokeStyle = slot.isPlaying ? '#c8f000' : '#4a5a40';
+  c.lineWidth = 1;
+  c.beginPath();
+  for (let x = 0; x < W; x++) {
+    let max = 0;
+    for (let j = 0; j < step; j++) { const v = Math.abs(data[x*step+j]||0); if(v>max) max=v; }
+    c.moveTo(x+.5, H/2 - max*(H/2));
+    c.lineTo(x+.5, H/2 + max*(H/2));
+  }
+  c.stroke();
+}
+
+function drawEditorWaveform(waveformData) {
+  const canvas = waveformCanvas;
+  const c = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  c.clearRect(0, 0, W, H);
+  if (!waveformData) {
+    c.fillStyle = '#111411';
+    c.fillRect(0, 0, W, H);
+    c.fillStyle = '#2a2f2a';
+    c.font = '11px Share Tech Mono';
+    c.textAlign = 'center';
+    c.fillText('ŽÁDNÝ ZVUK · NAHRAJ NEBO IMPORTUJ', W/2, H/2);
+    return;
+  }
+  c.fillStyle = '#080a08'; c.fillRect(0, 0, W, H);
+  c.strokeStyle = '#1a2018'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, H/2); c.lineTo(W, H/2); c.stroke();
+  const data = waveformData;
+  const step = Math.max(1, Math.floor(data.length / W));
+  // glow
+  c.strokeStyle = 'rgba(200,240,0,0.12)'; c.lineWidth = 5; c.beginPath();
+  for (let x = 0; x < W; x++) {
+    let max = 0;
+    for (let j = 0; j < step; j++) { const v=Math.abs(data[x*step+j]||0); if(v>max)max=v; }
+    c.moveTo(x+.5, H/2-max*(H/2-4)); c.lineTo(x+.5, H/2+max*(H/2-4));
+  }
+  c.stroke();
+  // main
+  c.strokeStyle = '#c8f000'; c.lineWidth = 1.5; c.beginPath();
+  for (let x = 0; x < W; x++) {
+    let max = 0;
+    for (let j = 0; j < step; j++) { const v=Math.abs(data[x*step+j]||0); if(v>max)max=v; }
+    c.moveTo(x+.5, H/2-max*(H/2-4)); c.lineTo(x+.5, H/2+max*(H/2-4));
+  }
+  c.stroke();
+}
+
+function extractWaveform(audioBuffer) {
+  const data = audioBuffer.getChannelData(0);
+  const samples = 512;
+  const blockSize = Math.floor(data.length / samples);
+  const waveform = new Float32Array(samples);
+  for (let i = 0; i < samples; i++) {
+    let sum = 0;
+    for (let j = 0; j < blockSize; j++) sum += Math.abs(data[i*blockSize+j]);
+    waveform[i] = sum / blockSize;
+  }
+  return waveform;
+}
+
+// ─── GLOBAL REC BUTTON ────────────────────────────────────────────────────────
+globalRecBtn.addEventListener('click', async () => {
+  if (isRecording) return; // use STOP button
+  if (selectSlotMode) { cancelSelectSlotMode(); return; }
+  await startGlobalRecording();
+});
+
+stopRecBtn.addEventListener('click', () => {
+  if (isRecording) stopGlobalRecording();
+});
+
+async function startGlobalRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    const ctx = getAudioCtx();
+    recordingChunks = [];
+
+    // live analyser for canvas
+    liveAnalyser = ctx.createAnalyser();
+    liveAnalyser.fftSize = 256;
+    const micSource = ctx.createMediaStreamSource(stream);
+    micSource.connect(liveAnalyser);
+
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordingChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordingChunks, {type: 'audio/webm'});
+      const arrayBuffer = await blob.arrayBuffer();
+      try {
+        pendingBuffer = await ctx.decodeAudioData(arrayBuffer);
+        pendingWaveform = extractWaveform(pendingBuffer);
+        enterSelectSlotMode();
+      } catch(e) {
+        setStatus('CHYBA DEKÓDOVÁNÍ AUDIA', 'recording');
+      }
+      stream.getTracks().forEach(t => t.stop());
+      stopLiveViz();
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    recStartTime = Date.now();
+    globalRecBtn.textContent = '● REC';
+    globalRecBtn.classList.add('active');
+    recLiveBar.classList.add('visible');
+    setStatus('● NAHRÁVÁM  MLUV DO MIKROFONU', 'recording');
+
+    // timer
+    recTimerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - recStartTime) / 1000);
+      const m = String(Math.floor(elapsed/60)).padStart(2,'0');
+      const s = String(elapsed%60).padStart(2,'0');
+      recTimerEl.textContent = `${m}:${s}`;
+      if (elapsed >= 30) stopGlobalRecording(); // max 30s
+    }, 250);
+
+    startLiveViz();
+
+  } catch(e) {
+    permWarn.style.display = 'block';
+    setStatus('PŘÍSTUP K MIKROFONU ODEPŘEN', 'recording');
+  }
+}
+
+function stopGlobalRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  isRecording = false;
+  clearInterval(recTimerInterval);
+  globalRecBtn.classList.remove('active');
+  globalRecBtn.textContent = '● REC';
+  recLiveBar.classList.remove('visible');
+}
+
+// ─── LIVE VIZ ────────────────────────────────────────────────────────────────
+function startLiveViz() {
+  const canvas = recLiveCanvas;
+  const c = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const bufLen = liveAnalyser ? liveAnalyser.frequencyBinCount : 64;
+  const dataArr = new Uint8Array(bufLen);
+
+  function draw() {
+    liveAnimFrame = requestAnimationFrame(draw);
+    if (!liveAnalyser) return;
+    liveAnalyser.getByteTimeDomainData(dataArr);
+    c.fillStyle = 'rgba(8,10,8,0.4)';
+    c.fillRect(0, 0, W, H);
+    c.strokeStyle = '#ff2a2a';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    const sliceW = W / bufLen;
+    let x = 0;
+    for (let i = 0; i < bufLen; i++) {
+      const v = dataArr[i] / 128.0;
+      const y = v * H / 2;
+      i === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+      x += sliceW;
+    }
+    c.stroke();
+  }
+  draw();
+}
+
+function stopLiveViz() {
+  if (liveAnimFrame) { cancelAnimationFrame(liveAnimFrame); liveAnimFrame = null; }
+  liveAnalyser = null;
+  const c = recLiveCanvas.getContext('2d');
+  c.clearRect(0, 0, recLiveCanvas.width, recLiveCanvas.height);
+}
+
+// ─── SELECT SLOT MODE ────────────────────────────────────────────────────────
+function enterSelectSlotMode() {
+  selectSlotMode = true;
+  padGrid.classList.add('rec-select-mode');
+  recHint.classList.add('visible');
+  setStatus(`NAHRÁVKA ${pendingBuffer.duration.toFixed(1)}s  VYBER SLOT`, 'info');
+}
+
+function cancelSelectSlotMode() {
+  selectSlotMode = false;
+  pendingBuffer = null;
+  pendingWaveform = null;
+  padGrid.classList.remove('rec-select-mode');
+  recHint.classList.remove('visible');
+  setStatus('PŘIPRAVEN');
+}
+
+function assignPendingToSlot(i) {
+  if (!pendingBuffer) return;
+  stopSlot(i);
+  slots[i].audioBuffer = pendingBuffer;
+  slots[i].waveformData = pendingWaveform;
+  slots[i].duration = pendingBuffer.duration;
+  slots[i].label = `SMP ${i+1}`;
+  slots[i].pitch = 0;
+  slots[i].speed = 1.0;
+  updatePadUI(i);
+
+  pendingBuffer = null;
+  pendingWaveform = null;
+  selectSlotMode = false;
+  padGrid.classList.remove('rec-select-mode');
+  recHint.classList.remove('visible');
+  setStatus(`SLOT ${i+1} NAČTEN  TAP = PLAY  LONG PRESS = EDIT`, 'playing');
+}
+
+// ─── EDITOR ───────────────────────────────────────────────────────────────────
+function openEditor(i) {
+  editorSlotIndex = i;
+  const slot = slots[i];
+  editorSlotNum.textContent = String(i+1).padStart(2,'0');
+  edPitch.value = slot.pitch;
+  edPitchVal.textContent = formatPitch(slot.pitch);
+  edSpeed.value = slot.speed;
+  edSpeedVal.textContent = slot.speed.toFixed(2) + '×';
+  const has = !!slot.audioBuffer;
+  previewBtn.disabled = !has;
+  clearBtn.disabled = !has;
+  saveBtn.disabled = !has;
+  drawEditorWaveform(slot.waveformData);
+  slotEditor.classList.add('visible');
+  slotEditor.scrollIntoView({behavior: 'smooth', block: 'start'});
+  setStatus(`EDITOR  SLOT ${i+1}`, 'info');
+}
+
+closeEditor.addEventListener('click', () => {
+  slotEditor.classList.remove('visible');
+  if (previewSource) { try { previewSource.stop(); } catch(e) {} previewSource = null; }
+  editorSlotIndex = null;
+  setStatus('PŘIPRAVEN');
+});
+
+edPitch.addEventListener('input', () => { edPitchVal.textContent = formatPitch(parseFloat(edPitch.value)); });
+edSpeed.addEventListener('input', () => { edSpeedVal.textContent = parseFloat(edSpeed.value).toFixed(2) + '×'; });
+
+function formatPitch(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + ' st'; }
+
+previewBtn.addEventListener('click', () => {
+  if (editorSlotIndex === null) return;
+  const slot = slots[editorSlotIndex];
+  if (!slot.audioBuffer) return;
+  if (previewSource) { try { previewSource.stop(); } catch(e) {} previewSource = null; }
+  const ctx = getAudioCtx();
+  const source = ctx.createBufferSource();
+  source.buffer = slot.audioBuffer;
+  source.loop = false;
+  source.playbackRate.value = parseFloat(edSpeed.value) * Math.pow(2, parseFloat(edPitch.value)/12);
+  source.connect(ctx.destination);
+  source.start();
+  previewSource = source;
+  setStatus('PREVIEW ▶', 'playing');
+});
+
+saveBtn.addEventListener('click', () => {
+  if (editorSlotIndex === null) return;
+  const slot = slots[editorSlotIndex];
+  slot.pitch = parseFloat(edPitch.value);
+  slot.speed = parseFloat(edSpeed.value);
+  if (slot.isPlaying && slot.sourceNode) {
+    slot.sourceNode.playbackRate.value = slot.speed * globalSpeed * Math.pow(2, slot.pitch/12);
+  }
+  updatePadUI(editorSlotIndex);
+  setStatus(`SLOT ${editorSlotIndex+1} ULOŽEN  PITCH ${formatPitch(slot.pitch)}  SPEED ${slot.speed.toFixed(2)}×`, 'playing');
+  slotEditor.classList.remove('visible');
+  editorSlotIndex = null;
+});
+
+clearBtn.addEventListener('click', () => {
+  if (editorSlotIndex === null) return;
+  const i = editorSlotIndex;
+  stopSlot(i);
+  slots[i].audioBuffer = null; slots[i].waveformData = null;
+  slots[i].label = null; slots[i].duration = 0;
+  padEls[i].className = 'pad';
+  drawEditorWaveform(null);
+  previewBtn.disabled = true; clearBtn.disabled = true; saveBtn.disabled = true;
+  setStatus(`SLOT ${i+1} VYMAZÁN`);
+});
+
+// ─── EDITOR REC BUTTON ────────────────────────────────────────────────────────
+// rec button inside editor still works — records directly into that slot
+recBtn.addEventListener('click', async () => {
+  if (isRecording) { stopGlobalRecording(); return; }
+  // start recording and on stop, auto-assign to editorSlotIndex
+  const targetSlot = editorSlotIndex;
+  await startGlobalRecording();
+  // override onstop to assign directly
+  if (mediaRecorder) {
+    const origStop = mediaRecorder.onstop;
+    mediaRecorder.onstop = async (e) => {
+      await origStop(e);
+      if (pendingBuffer && targetSlot !== null) {
+        assignPendingToSlot(targetSlot);
+        drawEditorWaveform(slots[targetSlot].waveformData);
+        previewBtn.disabled = false; clearBtn.disabled = false; saveBtn.disabled = false;
+      }
+    };
+  }
+});
+
+// ─── GLOBAL SPEED ─────────────────────────────────────────────────────────────
+globalSpeedSlider.addEventListener('input', () => {
+  globalSpeed = parseFloat(globalSpeedSlider.value);
+  globalSpeedVal.textContent = globalSpeed.toFixed(2) + '×';
+  updateAllPlaybackRates();
+});
+
+// ─── TRANSPORT ────────────────────────────────────────────────────────────────
+playAllBtn.addEventListener('click', playAll);
+stopAllBtn.addEventListener('click', stopAll);
+
+// ─── STATUS ───────────────────────────────────────────────────────────────────
+function setStatus(msg, type = '') {
+  statusText.textContent = msg;
+  statusBar.className = 'status-bar';
+  if (type) statusBar.classList.add(type);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+drawEditorWaveform(null);
+
+navigator.permissions?.query({name: 'microphone'}).then(r => {
+  if (r.state === 'denied') permWarn.style.display = 'block';
+}).catch(() => {});
+
+document.addEventListener('touchstart', () => {
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}, {once: true});
+</script>
+</body>
+</html>

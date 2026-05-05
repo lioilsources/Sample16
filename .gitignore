@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Flutter/Dart
+smpl16/.dart_tool/
+smpl16/.flutter-plugins
+smpl16/.flutter-plugins-dependencies
+smpl16/build/
+smpl16/.packages
+smpl16/pubspec.lock
+
+# iOS
+smpl16/ios/Pods/
+smpl16/ios/.symlinks/
+smpl16/ios/Flutter/Flutter.framework
+smpl16/ios/Flutter/Flutter.podspec
+smpl16/ios/Runner.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+smpl16/ios/ExportOptions.plist
+
+# Android
+smpl16/android/.gradle/
+smpl16/android/local.properties
+smpl16/android/key.properties
+*.keystore
+*.jks
