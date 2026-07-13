@@ -52,11 +52,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
               _StatusBar(recState: recState),
               const SizedBox(height: 12),
 
-              // Pad grid
-              PadGrid(onLongPress: _openEditor),
-              const SizedBox(height: 12),
-
-              // Select slot banner (shown after recording)
+              // Select slot banner (shown after recording) — above the grid
+              // so it is visible where the user is about to tap.
               if (recState.isSelectSlot) ...[
                 _SelectSlotBanner(
                   onCancel: () =>
@@ -64,6 +61,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
                 ),
                 const SizedBox(height: 12),
               ],
+
+              // Pad grid
+              PadGrid(onLongPress: _openEditor),
+              const SizedBox(height: 12),
 
               // Transport bar
               const TransportBar(),

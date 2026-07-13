@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import '../models/sample_slot.dart';
@@ -8,11 +9,17 @@ class AudioEngine {
 
   final _sources = <int, AudioSource>{};
   final _handles = <int, SoundHandle>{};
+  final _eventSubs = <int, StreamSubscription<StreamSoundEvent>>{};
   double _globalSpeed = 1.0;
+
+  /// Called when a one-shot sound reaches its end (not via stop()).
+  void Function(int index)? onFinished;
 
   double get globalSpeed => _globalSpeed;
 
-  Future<void> play(SampleSlot slot) async {
+  /// [loopOverride] forces looping regardless of the slot's own setting
+  /// (used by PLAY ALL, which always jams everything in a loop).
+  Future<void> play(SampleSlot slot, {bool? loopOverride}) async {
     if (slot.filePath == null) return;
     await stop(slot.index);
 
@@ -24,13 +31,29 @@ class AudioEngine {
       _sources[slot.index] = source;
     }
 
-    final handle = await SoLoud.instance.play(source, looping: true);
+    final handle =
+        await SoLoud.instance.play(source, looping: loopOverride ?? slot.loop);
     _handles[slot.index] = handle;
     SoLoud.instance.setRelativePlaySpeed(handle, _effectiveRate(slot));
+
+    _eventSubs[slot.index] = source.soundEvents.listen((event) {
+      if (event.handle == handle &&
+          event.event == SoundEventType.handleIsNoMoreValid &&
+          _handles[slot.index] == handle) {
+        _cleanupHandle(slot.index);
+        onFinished?.call(slot.index);
+      }
+    });
+  }
+
+  void _cleanupHandle(int index) {
+    _handles.remove(index);
+    _eventSubs.remove(index)?.cancel();
   }
 
   Future<void> stop(int index) async {
-    final handle = _handles.remove(index);
+    final handle = _handles[index];
+    _cleanupHandle(index);
     if (handle != null) {
       await SoLoud.instance.stop(handle);
     }
@@ -44,8 +67,12 @@ class AudioEngine {
 
   Future<void> playAll(List<SampleSlot> slots) async {
     for (final slot in slots) {
-      if (slot.hasAudio && !isPlaying(slot.index)) {
-        await play(slot);
+      if (!slot.hasAudio) continue;
+      if (isPlaying(slot.index)) {
+        // Already sounding (possibly as one-shot) — make it loop too.
+        SoLoud.instance.setLooping(_handles[slot.index]!, true);
+      } else {
+        await play(slot, loopOverride: true);
       }
     }
   }
@@ -65,6 +92,13 @@ class AudioEngine {
     final handle = _handles[slot.index];
     if (handle != null) {
       SoLoud.instance.setRelativePlaySpeed(handle, _effectiveRate(slot));
+    }
+  }
+
+  void updateSlotLoop(SampleSlot slot) {
+    final handle = _handles[slot.index];
+    if (handle != null) {
+      SoLoud.instance.setLooping(handle, slot.loop);
     }
   }
 

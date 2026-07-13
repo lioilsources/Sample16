@@ -11,6 +11,7 @@ class SampleSlot {
   double speed;        // 0.25x to 2.0x
   double trimStart;    // 0.0 to 1.0
   double trimEnd;      // 0.0 to 1.0
+  bool loop;           // false = one-shot playback
   Duration? duration;
   Float32List? waveformData;
 
@@ -23,6 +24,7 @@ class SampleSlot {
     this.speed = 1.0,
     this.trimStart = 0.0,
     this.trimEnd = 1.0,
+    this.loop = false,
     this.duration,
     this.waveformData,
   });
@@ -37,6 +39,7 @@ class SampleSlot {
     double? speed,
     double? trimStart,
     double? trimEnd,
+    bool? loop,
     Duration? duration,
     Float32List? waveformData,
     bool clearFile = false,
@@ -50,6 +53,7 @@ class SampleSlot {
       speed: speed ?? this.speed,
       trimStart: trimStart ?? this.trimStart,
       trimEnd: trimEnd ?? this.trimEnd,
+      loop: loop ?? this.loop,
       duration: clearFile ? null : (duration ?? this.duration),
       waveformData: clearFile ? null : (waveformData ?? this.waveformData),
     );
@@ -62,6 +66,7 @@ class SampleSlot {
         'speed': speed,
         'trimStart': trimStart,
         'trimEnd': trimEnd,
+        'loop': loop,
         'durationMs': duration?.inMilliseconds,
       };
 
@@ -75,6 +80,7 @@ class SampleSlot {
       speed: (map['speed'] as num?)?.toDouble() ?? 1.0,
       trimStart: (map['trimStart'] as num?)?.toDouble() ?? 0.0,
       trimEnd: (map['trimEnd'] as num?)?.toDouble() ?? 1.0,
+      loop: map['loop'] as bool? ?? false,
       duration:
           durationMs != null ? Duration(milliseconds: durationMs) : null,
     );

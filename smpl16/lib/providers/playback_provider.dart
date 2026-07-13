@@ -6,7 +6,14 @@ final globalSpeedProvider = StateProvider<double>((ref) => 1.0);
 
 class PlaybackNotifier extends Notifier<Set<int>> {
   @override
-  Set<int> build() => {};
+  Set<int> build() {
+    AudioEngine.instance.onFinished = (index) {
+      state = {...state}..remove(index);
+      ref.read(samplerProvider.notifier).setPlaying(index, false);
+    };
+    ref.onDispose(() => AudioEngine.instance.onFinished = null);
+    return {};
+  }
 
   Future<void> toggle(int index) async {
     final slots = ref.read(samplerProvider);

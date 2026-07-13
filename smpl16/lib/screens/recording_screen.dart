@@ -5,18 +5,31 @@ import '../providers/recording_provider.dart';
 import '../widgets/waveform_painter.dart';
 
 class RecordingScreen extends ConsumerWidget {
-  const RecordingScreen({super.key});
+  /// When set, the finished recording is assigned to this slot automatically
+  /// and the screen closes itself.
+  final int? targetSlot;
+
+  const RecordingScreen({super.key, this.targetSlot});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(recordingProvider);
 
+    ref.listen(recordingProvider, (prev, next) {
+      if (next.phase == RecordingPhase.assigned) {
+        ref.read(recordingProvider.notifier).consumeAssigned();
+        Navigator.pop(context);
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: const Text(
-          'NAHRÁVÁNÍ',
-          style: TextStyle(
+        title: Text(
+          targetSlot != null
+              ? 'NAHRÁVÁNÍ → SLOT ${(targetSlot! + 1).toString().padLeft(2, '0')}'
+              : 'NAHRÁVÁNÍ',
+          style: const TextStyle(
             fontFamily: 'monospace',
             fontSize: 14,
             letterSpacing: 4,
@@ -63,12 +76,14 @@ class RecordingScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 32),
             // Record / Stop button
-            _RecordButton(state: state),
+            _RecordButton(state: state, targetSlot: targetSlot),
             const Spacer(),
             // Status text
             Text(
               state.isRecording
-                  ? 'NAHRÁVÁ SE  ·  MAX 30s'
+                  ? targetSlot != null
+                      ? 'NAHRÁVÁ SE  ·  MAX 30s  ·  STOP = ULOŽIT DO SLOTU'
+                      : 'NAHRÁVÁ SE  ·  MAX 30s'
                   : state.isSelectSlot
                       ? 'HOTOVO  ·  ZAVŘI A VYBER SLOT'
                       : 'KLEPNI ● PRO SPUŠTĚNÍ',
@@ -112,7 +127,8 @@ class _ElapsedTimer extends StatelessWidget {
 
 class _RecordButton extends ConsumerWidget {
   final RecordingState state;
-  const _RecordButton({required this.state});
+  final int? targetSlot;
+  const _RecordButton({required this.state, this.targetSlot});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -121,7 +137,9 @@ class _RecordButton extends ConsumerWidget {
         if (state.isRecording) {
           ref.read(recordingProvider.notifier).stopRecording();
         } else if (!state.isSelectSlot) {
-          ref.read(recordingProvider.notifier).startRecording();
+          ref
+              .read(recordingProvider.notifier)
+              .startRecording(targetSlot: targetSlot);
         }
       },
       child: AnimatedContainer(

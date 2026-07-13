@@ -3,17 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/recorder_service.dart';
 import 'sampler_provider.dart';
 
-enum RecordingPhase { idle, recording, selectSlot }
+enum RecordingPhase { idle, recording, selectSlot, assigned }
 
 class RecordingState {
   final RecordingPhase phase;
   final String? pendingPath;
+  final int? targetSlot;
   final Duration elapsed;
   final double amplitude;
 
   const RecordingState({
     this.phase = RecordingPhase.idle,
     this.pendingPath,
+    this.targetSlot,
     this.elapsed = Duration.zero,
     this.amplitude = 0.0,
   });
@@ -24,12 +26,14 @@ class RecordingState {
   RecordingState copyWith({
     RecordingPhase? phase,
     String? pendingPath,
+    int? targetSlot,
     Duration? elapsed,
     double? amplitude,
   }) =>
       RecordingState(
         phase: phase ?? this.phase,
         pendingPath: pendingPath ?? this.pendingPath,
+        targetSlot: targetSlot ?? this.targetSlot,
         elapsed: elapsed ?? this.elapsed,
         amplitude: amplitude ?? this.amplitude,
       );
@@ -48,7 +52,9 @@ class RecordingNotifier extends Notifier<RecordingState> {
     return const RecordingState();
   }
 
-  Future<bool> startRecording() async {
+  /// When [targetSlot] is set, the finished recording is assigned to that
+  /// slot directly instead of entering the select-slot phase.
+  Future<bool> startRecording({int? targetSlot}) async {
     final svc = RecorderService.instance;
     if (!await svc.hasPermission()) return false;
 
@@ -57,6 +63,7 @@ class RecordingNotifier extends Notifier<RecordingState> {
 
     state = RecordingState(
       phase: RecordingPhase.recording,
+      targetSlot: targetSlot,
       elapsed: Duration.zero,
     );
 
@@ -80,14 +87,23 @@ class RecordingNotifier extends Notifier<RecordingState> {
     _ampSub = null;
 
     final path = await RecorderService.instance.stop();
-    if (path != null) {
+    final target = state.targetSlot;
+    if (path == null) {
+      state = const RecordingState();
+    } else if (target != null) {
+      await ref.read(samplerProvider.notifier).assignRecording(target, path);
+      state = const RecordingState(phase: RecordingPhase.assigned);
+    } else {
       state = RecordingState(
         phase: RecordingPhase.selectSlot,
         pendingPath: path,
       );
-    } else {
-      state = const RecordingState();
     }
+  }
+
+  /// Acknowledge the [RecordingPhase.assigned] state (UI has reacted).
+  void consumeAssigned() {
+    state = const RecordingState();
   }
 
   Future<void> assignToSlot(int index) async {

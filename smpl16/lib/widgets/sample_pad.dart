@@ -51,8 +51,11 @@ class _SamplePadState extends ConsumerState<SamplePad>
     if (isPlaying && !wasPlaying) {
       _pulseCtrl.repeat(reverse: true);
     } else if (!isPlaying && wasPlaying) {
-      _pulseCtrl.stop();
-      _pulseCtrl.reset();
+      // Keep pulsing while in select mode (all pads pulse to invite a tap).
+      if (!ref.read(recordingProvider).isSelectSlot) {
+        _pulseCtrl.stop();
+        _pulseCtrl.reset();
+      }
     }
     final isRecording = widget.slot.state == SlotState.recording;
     if (isRecording && !_pulseCtrl.isAnimating) {
@@ -91,11 +94,26 @@ class _SamplePadState extends ConsumerState<SamplePad>
     final recState = ref.watch(recordingProvider);
     final isSelectMode = recState.isSelectSlot;
 
+    ref.listen(recordingProvider, (prev, next) {
+      final was = prev?.isSelectSlot ?? false;
+      if (next.isSelectSlot && !was) {
+        _pulseCtrl.repeat(reverse: true);
+      } else if (was && !next.isSelectSlot &&
+          widget.slot.state != SlotState.playing &&
+          widget.slot.state != SlotState.recording) {
+        _pulseCtrl.stop();
+        _pulseCtrl.reset();
+      }
+    });
+
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
         if (isSelectMode) {
           ref.read(recordingProvider.notifier).assignToSlot(widget.slot.index);
+        } else if (!widget.slot.hasAudio) {
+          // Empty pad: tap opens the editor to load a sample.
+          widget.onLongPress();
         } else {
           ref.read(playbackProvider.notifier).toggle(widget.slot.index);
         }
@@ -107,20 +125,26 @@ class _SamplePadState extends ConsumerState<SamplePad>
       child: AnimatedBuilder(
         animation: _pulseAnim,
         builder: (context, child) {
-          final glowOpacity = widget.slot.state == SlotState.playing
-              ? 0.1 + _pulseAnim.value * 0.15
-              : widget.slot.state == SlotState.recording
-                  ? 0.1 + _pulseAnim.value * 0.2
-                  : 0.0;
+          final glowOpacity = isSelectMode
+              ? 0.12 + _pulseAnim.value * 0.2
+              : widget.slot.state == SlotState.playing
+                  ? 0.1 + _pulseAnim.value * 0.15
+                  : widget.slot.state == SlotState.recording
+                      ? 0.1 + _pulseAnim.value * 0.2
+                      : 0.0;
 
-          final glowColor = widget.slot.state == SlotState.recording
-              ? AppColors.red
-              : AppColors.accent;
+          final glowColor = isSelectMode
+              ? AppColors.accent2
+              : widget.slot.state == SlotState.recording
+                  ? AppColors.red
+                  : AppColors.accent;
 
           return Container(
             decoration: BoxDecoration(
               color: _bgColor,
-              border: Border.all(color: _borderColor),
+              border: Border.all(
+                color: isSelectMode ? AppColors.accent2 : _borderColor,
+              ),
               borderRadius: BorderRadius.circular(6),
               boxShadow: glowOpacity > 0
                   ? [
@@ -156,9 +180,25 @@ class _SamplePadState extends ConsumerState<SamplePad>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _PadNumber(
-                        number: widget.slot.index + 1,
-                        playing: widget.slot.state == SlotState.playing,
+                      Row(
+                        children: [
+                          _PadNumber(
+                            number: widget.slot.index + 1,
+                            playing: widget.slot.state == SlotState.playing,
+                          ),
+                          const Spacer(),
+                          if (widget.slot.loop)
+                            Text(
+                              '∞',
+                              style: TextStyle(
+                                fontSize: 10,
+                                height: 1,
+                                color: widget.slot.state == SlotState.playing
+                                    ? AppColors.accent
+                                    : AppColors.textDim,
+                              ),
+                            ),
+                        ],
                       ),
                       const Spacer(),
                       if (widget.slot.waveformData != null) ...[

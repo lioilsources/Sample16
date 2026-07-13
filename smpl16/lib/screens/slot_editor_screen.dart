@@ -20,24 +20,7 @@ class SlotEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _SlotEditorScreenState extends ConsumerState<SlotEditorScreen> {
-  late double _pitch;
-  late double _speed;
-
-  @override
-  void initState() {
-    super.initState();
-    final slot = ref.read(samplerProvider)[widget.slotIndex];
-    _pitch = slot.pitch;
-    _speed = slot.speed;
-  }
-
   SampleSlot get _slot => ref.watch(samplerProvider)[widget.slotIndex];
-
-  void _save() {
-    ref.read(samplerProvider.notifier).updatePitch(widget.slotIndex, _pitch);
-    ref.read(samplerProvider.notifier).updateSpeed(widget.slotIndex, _speed);
-    Navigator.pop(context);
-  }
 
   Future<void> _importFile() async {
     final result = await FilePicker.platform.pickFiles(
@@ -51,11 +34,13 @@ class _SlotEditorScreenState extends ConsumerState<SlotEditorScreen> {
   }
 
   Future<void> _openRecording() async {
+    // Recording started from the editor is assigned straight to this slot.
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const RecordingScreen()),
+      MaterialPageRoute(
+        builder: (_) => RecordingScreen(targetSlot: widget.slotIndex),
+      ),
     );
-    // After returning, check if a recording was assigned (handled by selectSlot flow)
   }
 
   Future<void> _clearSlot() async {
@@ -149,7 +134,7 @@ class _SlotEditorScreenState extends ConsumerState<SlotEditorScreen> {
                     ),
                     if (isPlaying)
                       const TextSpan(
-                        text: '  ●  LOOP',
+                        text: '  ●  HRAJE',
                         style: TextStyle(
                           color: AppColors.accent,
                           fontSize: 10,
@@ -253,62 +238,101 @@ class _SlotEditorScreenState extends ConsumerState<SlotEditorScreen> {
             ),
             child: Column(
               children: [
+                // Changes apply (and are heard) immediately.
                 PitchSlider(
-                  value: _pitch,
-                  onChanged: (v) => setState(() => _pitch = v),
+                  value: slot.pitch,
+                  onChanged: (v) => ref
+                      .read(samplerProvider.notifier)
+                      .updatePitch(widget.slotIndex, v),
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 6),
                   child: Divider(color: AppColors.border, height: 1),
                 ),
                 SpeedSlider(
-                  value: _speed,
-                  onChanged: (v) => setState(() => _speed = v),
+                  value: slot.speed,
+                  onChanged: (v) => ref
+                      .read(samplerProvider.notifier)
+                      .updateSpeed(widget.slotIndex, v),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 6),
+                  child: Divider(color: AppColors.border, height: 1),
+                ),
+                _LoopToggle(
+                  value: slot.loop,
+                  onChanged: (v) => ref
+                      .read(samplerProvider.notifier)
+                      .updateLoop(widget.slotIndex, v),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-
-          // Footer
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: slot.hasAudio ? _save : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: slot.hasAudio
-                          ? AppColors.accent.withAlpha(13)
-                          : Colors.transparent,
-                      border: Border.all(
-                        color: slot.hasAudio
-                            ? AppColors.accent
-                            : AppColors.border,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      '✓ ULOŽIT',
-                      style: TextStyle(
-                        fontSize: 12,
-                        letterSpacing: 2,
-                        fontFamily: 'monospace',
-                        color: slot.hasAudio
-                            ? AppColors.accent
-                            : AppColors.textDim,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 8),
         ],
       ),
+    );
+  }
+}
+
+class _LoopToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _LoopToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const SizedBox(
+          width: 56,
+          child: Text(
+            'LOOP',
+            style: TextStyle(
+              fontSize: 9,
+              letterSpacing: 2,
+              color: AppColors.textDim,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value ? 'HRAJE DOKOLA' : 'ZAHRAJE JEDNOU',
+            style: const TextStyle(
+              fontSize: 9,
+              letterSpacing: 1,
+              color: AppColors.textDim,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => onChanged(!value),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: value
+                  ? AppColors.accent.withAlpha(26)
+                  : Colors.transparent,
+              border: Border.all(
+                color: value ? AppColors.accent : AppColors.border,
+              ),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              value ? '∞ ON' : 'OFF',
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 2,
+                fontFamily: 'monospace',
+                color: value ? AppColors.accent : AppColors.textDim,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

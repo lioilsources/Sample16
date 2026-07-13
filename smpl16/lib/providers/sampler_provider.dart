@@ -86,6 +86,12 @@ class SamplerNotifier extends Notifier<List<SampleSlot>> {
     _persist(index);
   }
 
+  void updateLoop(int index, bool loop) {
+    _updateSlot(index, (s) => s.copyWith(loop: loop));
+    AudioEngine.instance.updateSlotLoop(state[index]);
+    _persist(index);
+  }
+
   void updateLabel(int index, String label) {
     _updateSlot(index, (s) => s.copyWith(label: label));
     _persist(index);
