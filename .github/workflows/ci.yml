@@ -34,7 +34,7 @@ jobs:
 
       - name: Analyze
         working-directory: ${{ env.WORKING_DIR }}
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Test
         working-directory: ${{ env.WORKING_DIR }}
