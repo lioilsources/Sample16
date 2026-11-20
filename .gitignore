@@ -17,7 +17,6 @@ smpl16/ios/.symlinks/
 smpl16/ios/Flutter/Flutter.framework
 smpl16/ios/Flutter/Flutter.podspec
 smpl16/ios/Runner.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
-smpl16/ios/ExportOptions.plist
 
 # Android
 smpl16/android/.gradle/
