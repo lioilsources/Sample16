@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  FLUTTER_VERSION: '3.41.x'
+  FLUTTER_VERSION: '3.50.x'
   WORKING_DIR: smpl16
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
 
   build-ios-debug:
     name: iOS Debug Build (Simulator)
-    runs-on: macos-15
+    runs-on: macos-26
     needs: test
 
     steps:
