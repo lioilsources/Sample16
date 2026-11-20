@@ -23,14 +23,12 @@ class _SlotEditorScreenState extends ConsumerState<SlotEditorScreen> {
   SampleSlot get _slot => ref.watch(samplerProvider)[widget.slotIndex];
 
   Future<void> _importFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-      allowMultiple: false,
-    );
-    if (result == null || result.files.single.path == null) return;
+    final file = await FilePicker.pickFile(type: FileType.audio);
+    final path = file?.path;
+    if (path == null) return;
     await ref
         .read(samplerProvider.notifier)
-        .importFile(widget.slotIndex, result.files.single.path!);
+        .importFile(widget.slotIndex, path);
   }
 
   Future<void> _openRecording() async {
