@@ -22,6 +22,21 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+# App icon: `dart run flutter_launcher_icons` regenerates the platform icons
+# from assets/icon/ (sources: icon.svg / icon_foreground.svg, rendered with
+# headless Chrome by gen_icon.py).
+flutter_launcher_icons:
+  image_path: assets/icon/icon.png
+  android: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#080a08"
+  adaptive_icon_foreground: assets/icon/icon_foreground.png
+  adaptive_icon_monochrome: assets/icon/icon_foreground.png
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#080a08"
